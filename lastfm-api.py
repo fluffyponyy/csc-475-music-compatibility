@@ -36,7 +36,7 @@ def convert_2_date(timestamp: str):
 # date_end_str = "27 Oct 2026, 23:59"
 
 date_start_str = "01 Jul 2026, 00:00"
-date_end_str = "27 Oct 2026, 23:59"
+date_end_str = "30 Aug 2026, 23:59"
 
 DATE_START = convert_2_date(date_start_str)
 DATE_END = convert_2_date(date_end_str)
@@ -256,42 +256,115 @@ create_user_dataframe(username_b_tracks, user_b_tracks_with_counter, USERNAME_B)
 import ast
 from collections import Counter
 
+import re
 
-def get_top_tags(user_dataframe, tag_column_name):
+
+def clean_tags(user_dataframe, tag_column_name):
     tags = user_dataframe[tag_column_name].dropna().apply(
         lambda value: ast.literal_eval(value) if isinstance(value, str) else value
     )
 
-    counts = Counter(
-        tag["name"]
-        for row in tags
-        for tag in row
-        if isinstance(tag, dict) and "name" in tag
-    )
+    print(tags)
 
-    return counts.most_common()
+    for idx, row in tags.items():
+        newrow = []
+        for pair in row:
+            tag = pair["name"]
+            print(tag)
+            tag = tag.lower()
+            
+            if bool(re.fullmatch(r'\d{4}', tag)):
+                print(f"REMOVING {tag}")
+                #row.remove(pair)
+                continue
+            words = tag.split()
+            if len(words) > 3:
+                print(f"REMOVING {tag}")
+                #row.remove(pair)
+                continue
+            if "album" in tag or "albums" in tag or "best" in tag or "great" in tag or "greatest" in tag or "worst" in tag:
+                print(f"REMOVING {tag}")
+                #row.remove(pair)
+                continue
+            #if artist name (in lowercase) = tag name, then remove
+            # more stupid number include 4-5, 45, 24 first listen, country200er, country2001, mtplay, totec radio, 3-5, 1980s=80s, 00s=2000s, 1990s=90s, 1960s=60s, 1970s=70s, 1950s=50s, mygang10, 2025releases
+            # ignore a /
+            # remove vinyl, boxset, own, digital, eps, aoty, fav, favorite, favourite, short, currentfavorites, amazing, songsaboutexes, mvrrockradio, sawthemlive, damnedgood, soty, ilovethis, fuckingbeautiful, ynaayt, dbdbdbdbdbdbdbdbdbdbdb, jennie, juliamofada
+            
+            # ignore spaces and hyphens
+            tag = tag.replace(" ", "")
+            tag = tag.replace("-", "")
 
-print(user_a_tracks_with_counter.head())
-print(user_b_tracks_with_counter.head())
+            index = row.index(pair)
+            pair["name"] = tag
+            newrow.append(pair)
+        tags.at[idx] = newrow
 
-print(f" -------- TOP TRACK TAGS -------")
-print(get_top_tags(user_a_tracks_with_counter, "track_tags"))
+    print(tags)
+        
+    return tags
+
+def get_top_tags(tags):
+    unique_tags_by_count = {}
+    
+    for row in tags:
+        for pair in row:
+            tagname = pair["name"]
+            tagcount = pair["count"]
+
+            if tagname in unique_tags_by_count.keys():
+                unique_tags_by_count[tagname] += (tagcount / 100)
+            else:
+                unique_tags_by_count[tagname] = (tagcount / 100)
+
+    print(dict(sorted(unique_tags_by_count.items(), key=lambda item: item[1], reverse=True),))
+            
+    return tags
+
+def get_top_percentile(df,percent):
+
+    start = 0
+    end = int(len(df)*percent)
+
+    return df.iloc[start:end]
+
+print(f" -------- TOP TRACKS - PLAYCOUNT > 1 -------")
+a_playcount = user_a_tracks_with_counter[user_a_tracks_with_counter['playcount'] > 5]
+a_playcount.sort_values("playcount", ascending=False, inplace=True)
+# print(a_playcount[['track', 'artist', 'playcount']])
+a_tags = clean_tags(a_playcount, "album_tags")
+get_top_tags(a_tags)
 print("---------------------------------------")
-print(get_top_tags(user_b_tracks_with_counter, "track_tags"))
+b_playcount = user_b_tracks_with_counter[user_b_tracks_with_counter['playcount'] > 5]
+b_playcount.sort_values("playcount", ascending=False, inplace=True)
+# print(b_playcount[['track', 'artist', 'playcount']])
+b_tags = clean_tags(b_playcount, "album_tags")
+get_top_tags(b_tags)
 
-print(f" -------- TOP ALBUM TAGS -------")
-print(get_top_tags(user_a_tracks_with_counter, "album_tags"))
-print("---------------------------------------")
-print(get_top_tags(user_b_tracks_with_counter, "album_tags"))
+# print(f" -------- TOP TRACKS - TOP 25% BY PLAYCOUNT -------")
+# user_a_tracks_with_counter.sort_values("playcount", ascending=False, inplace=True)
+# user_a_tracks_with_counter = get_top_percentile(user_a_tracks_with_counter,0.25)
+# print(user_a_tracks_with_counter[['track', 'artist', 'playcount']])
+# print("---------------------------------------")
+# user_b_tracks_with_counter.sort_values("playcount", ascending=False, inplace=True)
+# user_b_tracks_with_counter = get_top_percentile(user_b_tracks_with_counter,0.25)
+# print(user_b_tracks_with_counter[['track', 'artist', 'playcount']])
 
-print(f" -------- TOP ARTIST TAGS -------")
-print(get_top_tags(user_a_tracks_with_counter, "artist_tags"))
-print("---------------------------------------")
-print(get_top_tags(user_b_tracks_with_counter, "artist_tags"))
+# print(f" -------- TOP ALBUM TAGS -------")
+# print(get_top_tags(user_a_tracks_with_counter, "album_tags"))
+# print("---------------------------------------")
+# print(get_top_tags(user_b_tracks_with_counter, "album_tags"))
 
-# filter out non-genre tags -> tags with only "1" use?
+# print(f" -------- TOP ARTIST TAGS -------")
+# print(get_top_tags(user_a_tracks_with_counter, "artist_tags"))
+# print("---------------------------------------")
+# print(get_top_tags(user_b_tracks_with_counter, "artist_tags"))
+
+# filter out non-genre tags
+# remove any tag longer than 3 words but print them first to see if anything is good at all ever
 # ignore capitalization in tags
 # remove exact year tags (4 digit tags)
+# extra: prioritize artist > album > track
 # HOW: report tag coverage by % of plays for each user ?
 
 
@@ -305,6 +378,7 @@ sqliteConnection.close()
 # entries with NaN album: twenty one pilots can't help falling in love & alphabet war Greenland (needed 2 seperate solutions; alphabet war skipped entirely)
 # artists that have tags on the website BUT it does not work properly 
 # STORE dataframes for future usage/reference as well?
+# how to select user's top tracks? top 25% by playcount? anything with playcount > 1? select between the two based on what top % anything with playcount > 1 results in?
 
 # TODO: turn these into actual coding steps with details. what do they mean?
 # PI3 (expected): Fetch weighted tags for each user's most-played songs and filter out non-genre tags
